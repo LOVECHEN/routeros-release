@@ -1,0 +1,51 @@
+name: Publish Catalog
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: [Sync RouterOS]
+    types: [completed]
+  schedule:
+    - cron: '2,17,32,47 * * * *'
+permissions:
+  contents: read
+concurrency:
+  group: publish-catalog
+  cancel-in-progress: false
+jobs:
+  catalog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Build public search index independently of mirror API quota
+        run: python3 scripts/routeros_release.py catalog --read-only --output dist
+        env:
+          GH_TOKEN: ''
+          ROUTEROS_SITE: ${{ secrets.ROUTEROS_SITE }}
+          ROUTEROS_CDN: ${{ secrets.ROUTEROS_CDN }}
+      - uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4
+        with:
+          path: dist
+          retention-days: 1
+      - id: deploy
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
+        with:
+          reporting_interval: 60000
+          error_count: 120
+          timeout: 600000
+      - name: Update release descriptions after deploying the search page
+        if: ${{ !cancelled() }}
+        run: python3 scripts/routeros_release.py refresh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ROUTEROS_SITE: ${{ secrets.ROUTEROS_SITE }}
+          ROUTEROS_CDN: ${{ secrets.ROUTEROS_CDN }}

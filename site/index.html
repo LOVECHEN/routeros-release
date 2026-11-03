@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>RouterOS / 版本检索</title>
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <header><a class="wordmark" href="https://github.com/LOVECHEN/routeros-release">RouterOS <span>/ ARCHIVE</span></a><a href="https://github.com/LOVECHEN/routeros-release/releases/latest">最新稳定版 ↗</a></header>
+  <main>
+    <section class="intro"><p class="eyebrow">OFFICIAL FILES. ONE INDEX.</p><h1>找对版本，<br><em>直接下载。</em></h1><p>按版本、渠道和 Architecture 筛选。所有结果按官方发布时间倒序，文件名即下载链接。</p></section>
+    <form id="filters" role="search">
+      <label>Version / 精确版本<select id="version"><option value="">全部版本</option></select></label>
+      <label>关键词 / 文件名<input id="query" type="search" placeholder="例如 all_packages" autocomplete="off"></label>
+      <label>Channels<select id="channel"><option value="">全部渠道</option><option>longTerm</option><option>stable</option><option>testing</option><option>development</option></select></label>
+      <label>Architecture<select id="arch"><option value="">全部架构</option></select></label>
+      <button id="reset" type="button">重置</button>
+    </form>
+    <div class="result-bar"><p id="status" role="status" aria-live="polite">正在加载版本索引…</p><span>NEWEST FIRST ↓</span></div>
+    <section id="results" aria-label="版本列表"></section>
+    <button id="more" hidden>显示更多版本</button>
+  </main>
+  <footer>RouterOS 文件未经修改，软件版权归 MikroTik。索引随归档更新。</footer>
+</body>
+</html>
