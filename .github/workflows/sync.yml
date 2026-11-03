@@ -1,0 +1,119 @@
+name: Sync RouterOS
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - scripts/**
+      - tests/**
+      - .github/workflows/**
+  schedule:
+    # UTC+8: 01:00 / 07:00 / 13:00 / 19:00，再随机错峰 0-30 分钟。
+    - cron: '0 5,11,17,23 * * *'
+  workflow_dispatch:
+    inputs:
+      backfill:
+        description: '补齐官方清单中的全部历史版本'
+        type: boolean
+        default: false
+      versions:
+        description: '历史版本，逗号分隔；留空同步当前 v6/v7 所有渠道'
+        type: string
+        default: ''
+      channels:
+        description: '当前渠道（指定 versions 时忽略）'
+        type: choice
+        options:
+          - longTerm,stable,testing,development
+          - longTerm,stable
+          - stable
+          - longTerm
+          - testing
+          - development
+        default: longTerm,stable,testing,development
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-routeros
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Run unit tests
+        run: python3 -m unittest discover -s tests -v
+      - name: Test download filters
+        run: node --test tests/test_site.cjs
+
+  sync:
+    if: github.event_name != 'push'
+    needs: [test, plan]
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    name: Sync batch ${{ matrix.batch }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Verify and mirror official downloads
+        run: python3 scripts/routeros_release.py sync --versions "$VERSIONS" --channels "$CHANNELS"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSIONS: ${{ matrix.versions }}
+          CHANNELS: ${{ inputs.channels || 'longTerm,stable,testing,development' }}
+          ROUTEROS_SITE: ${{ secrets.ROUTEROS_SITE }}
+          ROUTEROS_CDN: ${{ secrets.ROUTEROS_CDN }}
+
+  plan:
+    if: github.event_name != 'push'
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Randomize scheduled start
+        if: github.event_name == 'schedule'
+        run: python3 scripts/routeros_release.py jitter
+      - id: plan
+        name: Plan version batches
+        run: |
+          if [ "$BACKFILL" = 'true' ]; then
+            python3 scripts/routeros_release.py matrix --all
+          else
+            python3 scripts/routeros_release.py matrix --versions "$VERSIONS" --channels "$CHANNELS"
+          fi
+        env:
+          ROUTEROS_SITE: ${{ secrets.ROUTEROS_SITE }}
+          ROUTEROS_CDN: ${{ secrets.ROUTEROS_CDN }}
+          BACKFILL: ${{ inputs.backfill || false }}
+          VERSIONS: ${{ inputs.versions || '' }}
+          CHANNELS: ${{ inputs.channels || 'longTerm,stable,testing,development' }}
+
+  keepalive:
+    if: github.event_name == 'schedule'
+    needs: sync
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Keep scheduled mirror active after 50 days without commits
+        run: python3 scripts/routeros_release.py keepalive
