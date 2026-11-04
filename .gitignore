@@ -1,0 +1,11 @@
+.DS_Store
+__pycache__/
+*.py[cod]
+downloads/
+dist/
+*.npk
+*.iso
+*.img
+*.zip
+*.exe
+*.tar.gz

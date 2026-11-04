@@ -1,0 +1,65 @@
+name: Sync RouterOS
+
+on:
+  schedule:
+    # UTC+8: 01:00 / 07:00 / 13:00 / 19:00，再随机错峰 0-30 分钟。
+    - cron: '0 5,11,17,23 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-routeros
+  cancel-in-progress: false
+
+jobs:
+  maintenance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: write
+    concurrency:
+      group: completed-run-cleanup
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1, Node.js 24
+        with:
+          persist-credentials: false
+      - name: Remove completed runs and retain all active runs
+        run: python3 scripts/routeros_release.py prune-runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  sync:
+    needs: maintenance
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1, Node.js 24
+        with:
+          persist-credentials: false
+      - name: Randomize scheduled start
+        if: github.event_name == 'schedule'
+        run: python3 scripts/routeros_release.py jitter
+      - name: Sync current channels only
+        run: python3 scripts/routeros_release.py sync
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ROUTEROS_SITE: ${{ secrets.ROUTEROS_SITE }}
+          ROUTEROS_CDN: ${{ secrets.ROUTEROS_CDN }}
+
+  keepalive:
+    if: ${{ always() && github.event_name == 'schedule' && !cancelled() }}
+    needs: sync
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1, Node.js 24
+      - name: Keep scheduled updates active after 50 days without commits
+        run: python3 scripts/routeros_release.py keepalive
